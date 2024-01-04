@@ -1,0 +1,30 @@
+library(tidyverse)
+library(compareGroups)
+source("funs/CleanLogRes.R")
+
+# data -----
+covars <- readRDS("data/covars.rds")
+
+dat <- readRDS("data/sample_onset_mort.rds") %>% rename(gr_var = sch_onset, status_var = death_status) %>% select(all_of(covars), -gr_var)
+tdat <- dat %>% mutate_if(is.logical, ~factor(as.character(.), levels = c("TRUE", "FALSE"))) ## comparegroups won't work with logical
+
+# freqs --------
+# compareGroups:: https://cran.r-project.org/web/packages/compareGroups/vignettes/compareGroups_vignette.html
+res <-compareGroups(status_var ~ ., data=tdat, byrow = FALSE)
+createTable(res, show.all = TRUE) ## we don't care about `p.overall`
+
+# crude logistic regression --------
+appGLM <- function(x){
+  res <- glm(status_var ~ x, data = dat, family = "binomial")
+  CleanLog(res)
+  
+}
+dat %>% select(-status_var) %>% 
+  mutate_if(is.numeric, scale) %>% 
+  map(appGLM)
+
+
+# multivariable logistic regression -------
+res_multi <- glm(status_var ~ ., data = dat, family = "binomial")
+CleanLog(res_multi)
+car::vif(res_multi)
