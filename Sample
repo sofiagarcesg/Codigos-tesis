@@ -1,0 +1,88 @@
+library(tidyverse)
+library(foreign)
+library(ggplot2)
+
+# CSA data ---- 
+full_dat <- read.spss("data/CSA_base.sav", to.data.frame = T, use.value.labels = T)
+
+# SCH patients ----- 
+sdat <- full_dat %>% filter(sztbmddoth=="SCH")
+
+# Variables ------
+
+covar_list <- c("id", "sch_onset", "sex", "age", "education_lb", "marital_status", "parenthood", 
+                "urbanicity", "institutionalized", "BMI_class", 
+                "current_smoker", "current_drinker", "num_comorb", "visit_med_1y",
+                "nlp_typical", "antidep", "benzo", 
+                "death_status", "death_cause", 
+                "lifetime_suicide", 
+                "mmse_score", "bprs_score", "gaf_score")
+
+sdat1 <- sdat %>% 
+  rename(age = Age, num_comorb = pathonombre, 
+         mmse_score = Score_MMSE, bprs_score = Score_BPRS, gaf_score = Score_EGF) %>% 
+  mutate(sex = factor(as.character(Sexe), levels = c("F", "M"), labels = c("female", "male")), 
+         education_lb = factor(as.character(education), levels = c("1", "2", "3"), labels = c("basic", "high_school", "college")), 
+         marital_status = factor(as.character(statutmarital), levels = c("1", "2", "3", "4"), labels = c("never_married", "married", "divorced", "widow")),
+         parenthood = Enfant_Nb > 0, 
+         urbanicity = `urbanicitéok` == 2, 
+         institutionalized = Mode_vie=="Insti",
+         inpatient = institution=="yes", 
+         current_smoker = Tabac=="yes", 
+         current_drinker = Alcool=="yes",
+         num_comorb_bin = cut(num_comorb, breaks = c(-Inf, median(num_comorb, na.rm=TRUE), Inf)),
+         duration_disorder = cut(Nb_annee_malade, breaks = c(-Inf, median(Nb_annee_malade, na.rm=TRUE), Inf)),
+         nlp_atypical = Atypicalantipsychotic=="yes",
+         nlp_typical = Typicalantipsychotic=="yes",
+         nlp = nlp_atypical | nlp_typical, 
+         antidep = antidépresseur=="yes",
+         benzo = benzo=="yes",
+         death_cause = factor(as.character(Causemort1maladie2suicide3accident0vivant99inconnu), 
+                              levels = c("0", "1", "2", "3", "99"), 
+                              labels = c("alive", "disease", "suicide", "accident", "unknown_cause")), 
+         death_status = death_cause!="alive", 
+         sch_onset = cut(Age_trouble, breaks = c(-Inf, 40, 59, Inf), labels = c("early", "late", "very_late")), 
+         sch_late_onset = sch_onset!="early", 
+         BMI_class = factor(cut(IMC, breaks = c(-Inf, 22.9, 30, Inf), labels = c("<23", "23-30", ">30"))), 
+         visit_med_1y = Medecin_1an==1, 
+         lifetime_suicide = Suicide ==1, 
+         Detail1 = str_trim(Detail1), 
+         Detail1_mix = ifelse(Detail1=="CV", "disease_cv", "disease_other"), 
+         death_cause2 = ifelse(as.character(death_cause)=="disease", Detail1_mix, as.character(death_cause))
+         
+         
+         ) #%>% select(all_of(covar_list))
+
+# missing data------
+sdat1 %>% map(summary) ## to check missing data 
+sdat2 <- sdat1 %>% drop_na(urbanicity, education_lb, BMI_class, death_status, sch_onset, mmse_score)
+
+# recode levels ------ 
+sdat3 <- sdat2 %>% 
+  mutate(education_lb = factor(as.character(education_lb), 
+                               levels = c("basic", "high_school", "college"), 
+                               labels = c("basic", "higher", "higher")), 
+         marital_status = factor(as.character(marital_status), 
+                                 levels = c("never_married", "married", "divorced", "widow"), 
+                                 labels = c("other", "married", "other", "other")))
+
+
+# save ----
+
+saveRDS(sdat3, "data/sample_onset_mort.rds")
+
+
+# covars ------
+covar_list2 <- c("status_var", "gr_var", 
+                "sex", "age", "education_lb", "marital_status", "parenthood", 
+                "urbanicity", "institutionalized", 
+                
+                "visit_med_1y", "num_comorb", "BMI_class", 
+                "current_smoker", "current_drinker", "lifetime_suicide", 
+                
+                "mmse_score", "bprs_score", "gaf_score",
+                
+                "nlp_atypical", "nlp_typical", "antidep", "benzo" 
+                )
+
+saveRDS(covar_list2, "data/covars.rds")
