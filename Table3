@@ -1,0 +1,24 @@
+library(tidyverse)
+library(tableone)
+library(compareGroups)
+
+# data -----
+covars <- readRDS("data/covars.rds")
+
+dat <- readRDS("data/sample_onset_mort.rds") %>% rename(gr_var = sch_onset, status_var = death_status) %>% select(all_of(covars), -status_var)
+tdat <- dat %>% mutate_if(is.logical, ~factor(as.character(.), levels = c("TRUE", "FALSE"))) ## comparegroups won't work with logical
+
+# freqs --------
+# compareGroups:: https://cran.r-project.org/web/packages/compareGroups/vignettes/compareGroups_vignette.html
+res <-compareGroups(gr_var ~ ., data=tdat)
+createTable(res) ## we don't care about `p.overall`
+
+# smd ------
+# SMDs with tableone:: https://cran.r-project.org/web/packages/tableone/vignettes/smd.html
+
+vars <- dat %>% select(-gr_var) %>% colnames
+res_smd <- CreateTableOne(vars = vars, strata = "gr_var", 
+                          data = dat %>% filter(gr_var %in% c("late", "very_late")) %>% droplevels(), 
+                          test = FALSE)
+print(res_smd, smd = TRUE) ## you can ignore the freqs, just put the smd
+
