@@ -1,0 +1,58 @@
+library(tidyverse)
+library(compareGroups)
+library(MatchIt)
+library(cobalt)
+library(tableone)
+source("funs/CleanLogRes.R")
+source("funs/FreqOutcome.R")
+
+# data -----
+dat <- readRDS("data/sample_onset_mort.rds") %>%
+  rename(gr_var = sch_late_onset, status_var = death_status) 
+
+vars <- dat %>% select(-gr_var, -status_var, -id) %>% colnames
+cat(vars, sep = " + ")
+
+# matching -----
+match_obj <- matchit(gr_var ~ 
+                       sex + age + education_lb + marital_satus + parenthood + 
+                       urbanicity + institutionalized + BMI_class + current_smoker + 
+                       current_drinker + num_comorb + visit_med_1y + nlp_typical + 
+                       antidep + benzo,
+                     data = dat,
+                     method = "nearest", distance ="glm",
+                     ratio = 1,
+                     replace = FALSE)
+summary(match_obj)
+
+# get data ------- 
+md <- match.data(match_obj)
+
+
+# balance data - plot ------
+love.plot(match_obj, binary = "std") +
+  geom_vline(xintercept = -0.1, linetype = "dashed") +
+  geom_vline(xintercept = 0.1, linetype = "dashed")
+
+
+# balance data - smd -----
+res_smd <- CreateTableOne(vars = vars, strata = "gr_var", data = md, test = FALSE)
+res_smd2 <- print(res_smd, smd = TRUE) ## you can ignore the freqs, just put the smd
+
+# crude association -----
+res_crude <- glm(status_var ~ gr_var, data = md, family = "binomial")
+CleanLog(res_crude)
+
+# multi association ------
+unbal_vars <- res_smd2 %>% as.data.frame %>% 
+  mutate(smd2 = ifelse(SMD=="<0.001", 0, as.numeric(SMD))) %>% 
+  mutate(is_unbal = smd2>0.1) %>% filter(is_unbal) %>% 
+  rownames_to_column() %>% pull(rowname) %>% gsub( " .*$", "", . ) ## warnings for NAs are normal
+
+unbal_vars
+
+
+res_multi <- glm(status_var ~ ., 
+                 data = md %>% select(gr_var, status_var, all_of(unbal_vars)), 
+                 family = "binomial")
+CleanLog(res_multi)
