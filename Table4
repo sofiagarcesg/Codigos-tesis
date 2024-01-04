@@ -1,0 +1,76 @@
+library(tidyverse)
+library(compareGroups)
+source("funs/CleanLogRes.R")
+library(car)
+library(ggplot2)
+FreqOutcome <- function(gr_var, status_var, dat){
+  ts <- table(dat$gr_var)
+  tx <- as.matrix(table(dat$gr_var, dat$status_var))
+  
+  n_early <- ts[1]
+  n_late <- ts[2]
+  n_very <- ts[3]
+  
+  e_early <- tx[1,2]
+  e_late <- tx[2,2]
+  e_very <- tx[3,2]
+  
+  p_early <- round((e_early/n_early)*100,2)
+  p_late <- round((e_late/n_late)*100,2)
+  p_very <- round((e_very/n_very)*100,2)
+  
+  lb_early <- paste(e_early, " / ", n_early, " (", p_early, "%)", sep = "")
+  lb_late <- paste(e_late, " / ", n_late, " (", p_late, "%)", sep = "")
+  lb_very <- paste(e_very, " / ", n_very, " (", p_very, "%)", sep = "")
+  
+  res <- data.frame(
+    var = c("early", "late", "very"), 
+    e_n_p = c(lb_early, lb_late, lb_very)
+  )
+  
+  return(res)
+  
+}
+
+
+# data -----
+covars <- readRDS("data/covars.rds")
+
+
+dat <- readRDS("data/sample_onset_mort.rds") %>%
+  rename(gr_var = sch_onset, status_var = death_status) %>% 
+  mutate_if(is.numeric, scale) %>% 
+  select(all_of(covars))
+
+
+
+# freqs ------
+FreqOutcome(gr_var, status_var, dat)
+
+
+# crude association -----
+res_crude <- glm(status_var ~ gr_var, data = dat, family = "binomial")
+CleanLog(res_crude)
+
+# multi association ------
+res_multi <- glm(status_var ~ ., data = dat, family = "binomial")
+CleanLog(res_multi)
+
+
+#Assumptions------------
+#multicolinearity
+car::vif(res_multi)
+#Independence
+Box.test(resid(res_multi), lag = 20, type = "Ljung-Box")
+plot(resid(res_multi) ~ ., data = dat, ylab = "Residuos", xlab = "x1")
+Indice <- seq(1,302,1)
+Residuos <- res_multi$residuals
+residuos <- data.frame(Indice, Residuos)
+ggplot(data = residuos, aes(x = Indice, y = Residuos)) +
+  geom_point() +
+  ggtitle("Residuos del modelo ajustado") +
+  theme_few() +
+  background_grid() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+anova(res_crude, res_multi, test = 'Chisq')
